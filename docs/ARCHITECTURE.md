@@ -21,9 +21,10 @@ src/
 ├─ components/
 │  ├─ layout/                         SiteHeader, SiteFooter
 │  ├─ repo-input/                     RepoUrlForm (hero + compact), TokenSettings
-│  ├─ repo/                           RepoExplorer, RepoHeader, TreeList, ErrorState, skeletons
-│  ├─ graph/                     (M2) React Flow canvas, custom nodes, layout
-│  ├─ panel/                     (M4) SidePanel / mobile BottomSheet, Breadcrumbs
+│  ├─ repo/                           RepoExplorer/Workspace (shared view state), RepoHeader (Map/Files tabs),
+│  │                                  TreeList, NodeIcon, ErrorState, skeletons
+│  ├─ graph/                          RepoGraph (React Flow canvas), custom entry/"more" nodes
+│  ├─ panel/                          DetailsPanel, Breadcrumbs, mobile BottomSheet (AI summary lands here in M4)
 │  └─ ui/                             Small Primer-style primitives (Flash, Label, Counter…)
 ├─ hooks/                             useRepoTree (+ later useSummary, useReadingPath)
 └─ lib/
@@ -32,6 +33,8 @@ src/
    ├─ format.ts                       Number/byte formatting
    ├─ classify.ts                     File kind (source/test/config/docs/build) + skip rules
    ├─ language-colors.ts              GitHub linguist colors for the repo header
+   ├─ tree-utils.ts                   ancestors, breadcrumbs chain, kind roll-ups, GitHub permalinks
+   ├─ graph/layout.ts                 Visible tree → left-to-right tidy tree (d3-hierarchy); pure
    ├─ github/
    │  ├─ parse-url.ts                 Accepts many URL shapes; pure, shared with client
    │  ├─ client.ts                    REST calls + error mapping (server only)
@@ -99,3 +102,17 @@ server's `GITHUB_TOKEN`; they need the visitor's own token.
    cache.get(tree@sha) ─ miss → GET git/trees/{sha}?recursive=1 → buildTree() → cache.set
    → RepoTree JSON
 ```
+
+## Map (milestone 2)
+
+- **One state, two views.** `RepoWorkspace` owns the selection, the set of expanded folders and
+  "reveal" requests. The Map and the Files list both read and update that same state, so expanding or
+  selecting in one shows up in the other.
+- **Layout.** `layoutTree()` lays out only what's visible: the root, its children and the children of
+  expanded folders. It's a left-to-right tidy tree with fixed node sizes, so layout runs before React Flow
+  measures anything. Large folders show `GRAPH_PAGE_SIZE` children and then a "+N more" node, and folders
+  that lost entries to the server-side cap get a "not loaded" node.
+- **Stable clicks.** Expanding a folder reflows the tree. The viewport shifts by however much the clicked
+  node moved, so it stays under the pointer.
+- **Reveal.** Deep links, breadcrumbs and the panel's contents list expand the target's ancestors and
+  center the map on it once React Flow has initialized.

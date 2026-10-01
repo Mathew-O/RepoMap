@@ -5,6 +5,7 @@ import {
   LinkIcon,
   LockIcon,
   MarkGithubIcon,
+  ProjectIcon,
   RepoForkedIcon,
   RepoIcon,
   StarIcon,
@@ -14,8 +15,18 @@ import { formatCount, formatNumber } from "@/lib/format";
 import { languageColor } from "@/lib/language-colors";
 import type { RepoTree } from "@/lib/types";
 
+export type RepoView = "map" | "files";
+
 /** GitHub-style repository header: title, visibility, counters, description, topics, tabs. */
-export function RepoHeader({ tree }: { tree: RepoTree }) {
+export function RepoHeader({
+  tree,
+  view,
+  onViewChange,
+}: {
+  tree: RepoTree;
+  view: RepoView;
+  onViewChange: (view: RepoView) => void;
+}) {
   const { meta, stats } = tree;
   const ownerUrl = meta.htmlUrl.slice(0, meta.htmlUrl.lastIndexOf("/"));
 
@@ -98,12 +109,26 @@ export function RepoHeader({ tree }: { tree: RepoTree }) {
           </div>
         )}
 
-        <nav aria-label="Repository" className="mt-4 flex gap-2 overflow-x-auto pb-2">
-          <a href="#files" aria-current="page" className="UnderlineNav-item">
+        <nav aria-label="Repository views" className="mt-4 flex gap-2 overflow-x-auto pb-2">
+          <button
+            type="button"
+            aria-current={view === "map" ? "page" : undefined}
+            onClick={() => onViewChange("map")}
+            className="UnderlineNav-item cursor-pointer"
+          >
+            <ProjectIcon />
+            Map
+          </button>
+          <button
+            type="button"
+            aria-current={view === "files" ? "page" : undefined}
+            onClick={() => onViewChange("files")}
+            className="UnderlineNav-item cursor-pointer"
+          >
             <CodeIcon />
             Files
             <span className="Counter">{formatCount(stats.files)}</span>
-          </a>
+          </button>
         </nav>
       </div>
     </div>

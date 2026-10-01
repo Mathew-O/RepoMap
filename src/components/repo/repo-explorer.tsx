@@ -10,30 +10,154 @@ import {
   InfoIcon,
   SkipIcon,
 } from "@primer/octicons-react";
+import dynamic from "next/dynamic";
+import { useCallback, useRef, useState } from "react";
 
+import type { RevealRequest } from "@/components/graph/repo-graph";
+import { BottomSheet } from "@/components/panel/bottom-sheet";
+import { DetailsPanel } from "@/components/panel/details-panel";
 import { ErrorState } from "@/components/repo/error-state";
-import { RepoHeader } from "@/components/repo/repo-header";
+import { kindColor } from "@/components/repo/kind";
+import { NodeIcon } from "@/components/repo/node-icon";
+import { RepoHeader, type RepoView } from "@/components/repo/repo-header";
 import { RepoSkeleton } from "@/components/repo/repo-skeleton";
-import { TreeList, githubUrl } from "@/components/repo/tree-list";
+import { TreeList } from "@/components/repo/tree-list";
 import { useRepoTree } from "@/hooks/use-repo-tree";
 import { formatBytes, formatNumber, shortSha } from "@/lib/format";
+import { ancestorsOf, githubUrl } from "@/lib/tree-utils";
 import type { RepoTree } from "@/lib/types";
+
+// React Flow measures the DOM, so it only renders in the browser.
+const RepoGraph = dynamic(() => import("@/components/graph/repo-graph").then((m) => m.RepoGraph), {
+  ssr: false,
+  loading: () => <div className="skeleton h-full w-full rounded-none!" aria-label="Loading map" />,
+});
 
 export function RepoExplorer({ input }: { input: string }) {
   const { state, retry } = useRepoTree(input);
 
   if (state.status === "loading") return <RepoSkeleton />;
   if (state.status === "error") return <ErrorState error={state.error} input={input} onRetry={retry} />;
+  // Re-key per commit + URL so view state resets when navigating to another repo or ref.
+  return <RepoWorkspace key={`${input}@${state.data.meta.commitSha}`} tree={state.data} />;
+}
 
-  const tree = state.data;
+type SelectOptions = { reveal?: boolean };
+
+function RepoWorkspace({ tree }: { tree: RepoTree }) {
+  const { nodes, meta } = tree;
+  const focus = meta.focusPath;
+
+  const [view, setView] = useState<RepoView>("map");
+  const [selectedPath, setSelectedPath] = useState<string>(focus ?? "");
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    const initial = new Set(ancestorsOf(focus, nodes));
+    if (focus && nodes[focus]?.type === "dir") initial.add(focus);
+    return initial;
+  });
+  const [reveal, setReveal] = useState<RevealRequest | null>(focus ? { path: focus, nonce: 1 } : null);
+  // Mobile sheet starts as a peek so a deep link still shows the map; tapping a file opens it.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const nonce = useRef(1);
+
+  const select = useCallback(
+    (path: string, options?: SelectOptions) => {
+      setSelectedPath(path);
+      if (nodes[path]?.type !== "dir" && path !== "") setSheetOpen(true);
+      if (options?.reveal) {
+        const ancestors = ancestorsOf(path, nodes);
+        if (ancestors.length) {
+          setExpanded((prev) => {
+            if (ancestors.every((a) => prev.has(a))) return prev;
+            const next = new Set(prev);
+            for (const a of ancestors) next.add(a);
+            return next;
+          });
+        }
+        nonce.current += 1;
+        setReveal({ path, nonce: nonce.current });
+      }
+    },
+    [nodes],
+  );
+
+  const toggle = useCallback((path: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const collapseAll = useCallback(() => setExpanded(new Set()), []);
+
+  const selectedNode = nodes[selectedPath];
+  const showSheet = selectedPath !== "" && selectedNode !== undefined;
+
   return (
     <>
-      <RepoHeader tree={tree} />
+      <RepoHeader tree={tree} view={view} onViewChange={setView} />
       <div className="mx-auto w-full max-w-[1280px] space-y-4 px-4 py-6 md:px-6 lg:px-8">
         <Toolbar tree={tree} />
         <TruncationNotice tree={tree} />
-        <TreeList tree={tree} />
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="min-w-0">
+            {view === "map" ? (
+              <div className="Box h-[60dvh] min-h-[340px] overflow-hidden lg:h-[calc(100dvh-180px)] lg:max-h-[880px] lg:min-h-[520px]">
+                <RepoGraph
+                  tree={tree}
+                  expanded={expanded}
+                  selectedPath={selectedPath}
+                  reveal={reveal}
+                  onSelect={select}
+                  onToggle={toggle}
+                  onCollapseAll={collapseAll}
+                />
+              </div>
+            ) : (
+              <TreeList
+                tree={tree}
+                expanded={expanded}
+                selectedPath={selectedPath}
+                onToggle={toggle}
+                onSelect={select}
+                onCollapseAll={collapseAll}
+              />
+            )}
+          </div>
+
+          <aside aria-label="Details" className="hidden lg:block">
+            <div className="Box sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto p-4">
+              <DetailsPanel tree={tree} path={selectedPath} onSelect={select} />
+            </div>
+          </aside>
+        </div>
+
+        {/* Room for the mobile bottom sheet so it never hides the end of the page. */}
+        {showSheet && <div className="h-20 lg:hidden" aria-hidden="true" />}
       </div>
+
+      {showSheet && (
+        <BottomSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          onClose={() => {
+            setSelectedPath("");
+            setSheetOpen(false);
+          }}
+          title={
+            <span className="flex min-w-0 items-center gap-2">
+              <NodeIcon node={selectedNode} expanded={expanded.has(selectedPath)} />
+              <span className="truncate font-semibold">{selectedNode.name}</span>
+              <span className="size-2 shrink-0 rounded-full" style={{ background: kindColor(selectedNode.kind) }} />
+            </span>
+          }
+        >
+          <DetailsPanel tree={tree} path={selectedPath} onSelect={select} />
+        </BottomSheet>
+      )}
     </>
   );
 }

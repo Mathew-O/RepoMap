@@ -12,3 +12,9 @@ export const TREE_LIST_PAGE_SIZE = 200;
 
 /** Timeout for a single GitHub API request. */
 export const GITHUB_TIMEOUT_MS = 20_000;
+
+/** Children shown per folder on the graph before a "+N more" node. */
+export const GRAPH_PAGE_SIZE = 30;
+
+/** Above this many visible graph nodes, RepoMap suggests collapsing folders. */
+export const LARGE_GRAPH_THRESHOLD = 800;

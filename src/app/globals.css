@@ -417,3 +417,56 @@
 @media (prefers-reduced-motion: reduce) {
   .skeleton { animation: none; }
 }
+
+/* ─── Repo map (React Flow) themed with the GitHub tokens above ─────────── */
+.repomap-flow .react-flow {
+  --xy-background-color: var(--gh-canvas);
+  --xy-background-pattern-color: var(--gh-border);
+  --xy-edge-stroke: var(--gh-border);
+  --xy-edge-stroke-width: 1.5;
+  --xy-minimap-background-color: var(--gh-canvas-subtle);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--gh-canvas-inset) 55%, transparent);
+  --xy-minimap-mask-stroke-color: var(--gh-accent-emphasis);
+  --xy-minimap-mask-stroke-width: 2;
+  --xy-controls-button-background-color: var(--gh-btn);
+  --xy-controls-button-background-color-hover: var(--gh-btn-hover);
+  --xy-controls-button-color: var(--gh-fg-muted);
+  --xy-controls-button-color-hover: var(--gh-fg);
+  --xy-controls-button-border-color: var(--gh-border);
+  --xy-controls-box-shadow: none;
+  --xy-attribution-background-color: transparent;
+}
+
+.repomap-flow .react-flow__node {
+  animation: repomap-node-in 160ms ease-out;
+}
+.repomap-flow .react-flow__node:focus-visible {
+  outline: 2px solid var(--gh-accent-emphasis);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.repomap-flow .react-flow__edge.repomap-edge-active .react-flow__edge-path {
+  stroke: var(--gh-accent-emphasis);
+  stroke-width: 2;
+}
+.repomap-flow .react-flow__controls,
+.repomap-flow .react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid var(--gh-border);
+  border-radius: 6px;
+}
+.repomap-flow .react-flow__controls-button:last-child {
+  border-bottom: 0;
+}
+.repomap-flow .react-flow__attribution a {
+  color: var(--gh-fg-subtle);
+}
+
+@keyframes repomap-node-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .repomap-flow .react-flow__node { animation: none; }
+}

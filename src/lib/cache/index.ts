@@ -1,5 +1,6 @@
 import "server-only";
 
+import os from "node:os";
 import path from "node:path";
 
 import { FileStore } from "@/lib/cache/file-store";
@@ -43,8 +44,16 @@ const globalForCache = globalThis as unknown as { __repomapCache?: CacheStore };
 /** To move to Redis/Postgres, swap the durable store constructed here. */
 export function getCache(): CacheStore {
   if (!globalForCache.__repomapCache) {
-    const dir = process.env.REPOMAP_CACHE_DIR?.trim() || path.join(process.cwd(), ".cache", "repomap");
-    globalForCache.__repomapCache = new TieredStore(new MemoryStore(64), new FileStore(dir));
+    globalForCache.__repomapCache = new TieredStore(new MemoryStore(64), new FileStore(cacheDir()));
   }
   return globalForCache.__repomapCache;
+}
+
+function cacheDir(): string {
+  const configured = process.env.REPOMAP_CACHE_DIR?.trim();
+  if (configured) return configured;
+  // Serverless hosts (Vercel, Lambda) only allow writes under the temp dir.
+  // That cache is per-instance and short-lived; swap in Redis/Postgres for a shared one.
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) return path.join(os.tmpdir(), "repomap-cache");
+  return path.join(process.cwd(), ".cache", "repomap");
 }

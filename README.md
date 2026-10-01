@@ -3,8 +3,9 @@
 Understand an unfamiliar GitHub repository: paste a URL and get a map of the codebase, where to start reading,
 and grounded AI explanations of every folder and file.
 
-> **Status:** milestone 1 of 6. URL input, GitHub tree fetching, caching and a GitHub-style file browser are done.
-> The interactive graph, entry-point detection, AI summaries and import graph come next.
+> **Status:** milestone 2 of 6. Done so far: URL input, GitHub tree fetching with caching, and an interactive
+> map with expand/collapse, pan/zoom, minimap, a details panel (a bottom sheet on mobile) and a GitHub-style
+> file list. Entry-point detection, AI summaries and the import graph come next.
 > See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Getting started
@@ -36,3 +37,15 @@ To raise the limit:
 - **Server-wide:** set `GITHUB_TOKEN` in `.env.local`. For safety it is only used for **public** repos.
 
 Trees are cached per commit SHA in `.cache/repomap/` (gitignored), so repeat visits make 0–2 GitHub calls.
+
+## Deploying to Vercel
+
+1. Go to [vercel.com/new](https://vercel.com/new), sign in with GitHub, and import `Mathew-O/RepoMap`.
+   Vercel detects Next.js, so no build settings are needed.
+2. Under **Environment Variables**, add `GITHUB_TOKEN`: a fine-grained token with read-only access to public repos.
+   This matters on Vercel because serverless functions share outbound IPs, and GitHub's anonymous
+   60 requests/hour limit runs out quickly there.
+3. Click **Deploy**. Every push to `main` redeploys automatically.
+
+On Vercel the file cache lives in the function's temp directory, so it's per-instance and short-lived.
+For a shared cache, implement `CacheStore` with Redis or Postgres (see `src/lib/cache/`).
