@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+.cache/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+.env
+.env*.local
+npm-debug.log*
+.DS_Store
+
+# Local tooling
+.claude/
