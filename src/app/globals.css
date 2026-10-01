@@ -295,6 +295,22 @@
   .Label--accent { color: var(--gh-accent); border-color: var(--gh-accent); }
   .Label--success { color: var(--gh-success); border-color: var(--gh-success); }
 
+  /* Filled so it can't be mistaken for the green "Tests" color dot. */
+  .StartHere {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 18px;
+    white-space: nowrap;
+    color: #ffffff;
+    background: var(--gh-success-emphasis);
+    border-radius: 2em;
+  }
+  .StartHere svg { color: #ffffff; flex-shrink: 0; }
+
   .Counter {
     display: inline-block;
     min-width: 20px;

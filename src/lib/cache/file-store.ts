@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -43,8 +43,11 @@ export class FileStore implements CacheStore {
       await writeFile(tmp, JSON.stringify(entry), "utf8");
       await rename(tmp, file);
     } catch (err) {
-      console.warn(`[cache] write failed for ${key}:`, (err as Error).message);
       await rm(tmp, { force: true }).catch(() => {});
+      // Windows refuses to rename over a file another request is writing at the same moment.
+      // Concurrent writers of one key hold the same value, so losing that race is fine.
+      if (isRenameRace(err) && (await exists(file))) return;
+      console.warn(`[cache] write failed for ${key}:`, (err as Error).message);
     }
   }
 
@@ -60,4 +63,16 @@ export class FileStore implements CacheStore {
 
 function isNotFound(err: unknown): boolean {
   return typeof err === "object" && err !== null && (err as NodeJS.ErrnoException).code === "ENOENT";
+}
+
+function isRenameRace(err: unknown): boolean {
+  const code = typeof err === "object" && err !== null ? (err as NodeJS.ErrnoException).code : undefined;
+  return code === "EPERM" || code === "EACCES" || code === "EBUSY";
+}
+
+async function exists(file: string): Promise<boolean> {
+  return stat(file).then(
+    () => true,
+    () => false,
+  );
 }

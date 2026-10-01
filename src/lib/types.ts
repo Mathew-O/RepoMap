@@ -118,6 +118,8 @@ export interface TreeSnapshot {
 
 export interface RepoTree extends TreeSnapshot {
   meta: RepoMeta;
+  /** "Start here" candidates for this commit. */
+  entryPoints: EntryPointReport;
   fetchedAt: string;
   /** True if the tree came from cache rather than GitHub. */
   cached: boolean;
@@ -146,16 +148,29 @@ export interface ApiError {
   resetAt?: string;
 }
 
-// ─── Planned (later milestones) ──────────────────────────────────────────
+// ─── Entry points ────────────────────────────────────────────────────────
 
-/** M3: heuristic detection first, then refined by the LLM. */
+/** A file (or occasionally a folder) worth reading first. */
 export interface EntryPoint {
   path: string;
+  /** Human-readable evidence, strongest first, e.g. `package.json "bin"`. */
   reasons: string[];
+  /** Heuristics today; the LLM refines the list in milestone 4. */
   source: "heuristic" | "llm";
-  /** 0–1, used to rank "Start here" candidates. */
+  /** 0–1. Independent signals combine, so two weak hints beat one. */
   score: number;
 }
+
+export interface EntryPointReport {
+  /** Ranked, strongest first. Empty when nothing stood out. */
+  points: EntryPoint[];
+  /** Manifests and configs whose contents were read to find them. */
+  filesRead: string[];
+  /** Some files couldn't be fetched (rate limit, timeout), so the list may be missing items. */
+  incomplete: boolean;
+}
+
+// ─── Planned (later milestones) ──────────────────────────────────────────
 
 /** M4 */
 export type SummaryTarget = "file" | "folder" | "overview";

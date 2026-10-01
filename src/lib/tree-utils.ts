@@ -1,4 +1,4 @@
-import type { FileKind, RepoMeta, TreeNode } from "@/lib/types";
+import type { EntryPoint, FileKind, RepoMeta, TreeNode } from "@/lib/types";
 
 type Nodes = Record<string, TreeNode>;
 
@@ -56,4 +56,33 @@ export function githubUrl(meta: RepoMeta, path: string, view: "tree" | "blob"): 
 
 export function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
+}
+
+export interface EntryIndex {
+  byPath: ReadonlyMap<string, EntryPoint>;
+  /** Folders (not the root) with a "Start here" entry somewhere beneath them. */
+  containers: ReadonlySet<string>;
+}
+
+export function indexEntryPoints(points: EntryPoint[], nodes: Nodes): EntryIndex {
+  const containers = new Set<string>();
+  for (const point of points) for (const dir of ancestorsOf(point.path, nodes)) containers.add(dir);
+  return { byPath: new Map(points.map((p) => [p.path, p])), containers };
+}
+
+/** Entry points inside a folder ("" = the whole repo). */
+export function entryPointsUnder(dir: string, points: EntryPoint[]): EntryPoint[] {
+  return dir === "" ? points : points.filter((p) => p.path.startsWith(`${dir}/`));
+}
+
+/** Names that say little on their own (index.ts, main.go), so labels add the parent folder. */
+const GENERIC_NAME_RE = /^(index|main|__main__|__init__|mod|lib|page|layout|program)\.[a-z0-9]+$/i;
+
+/** Short, unambiguous label for a path among `siblings`: "cli.ts", or "gh/main.go" when the name alone is vague. */
+export function shortLabel(path: string, siblings: readonly string[]): string {
+  const segments = path.split("/");
+  const name = segments[segments.length - 1]!;
+  const duplicate = siblings.some((other) => other !== path && other.slice(other.lastIndexOf("/") + 1) === name);
+  if (segments.length > 1 && (duplicate || GENERIC_NAME_RE.test(name))) return segments.slice(-2).join("/");
+  return name;
 }

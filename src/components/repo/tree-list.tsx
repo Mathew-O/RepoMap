@@ -1,13 +1,13 @@
 "use client";
 
-import { ChevronRightIcon, FoldIcon, InfoIcon } from "@primer/octicons-react";
+import { ChevronRightIcon, FoldIcon, InfoIcon, RocketIcon } from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { KIND_LABEL, KIND_ORDER, SKIP_LABEL, kindColor } from "@/components/repo/kind";
 import { NodeIcon } from "@/components/repo/node-icon";
 import { TREE_LIST_PAGE_SIZE } from "@/lib/config";
 import { formatBytes, formatNumber } from "@/lib/format";
-import { githubUrl } from "@/lib/tree-utils";
+import { type EntryIndex, githubUrl } from "@/lib/tree-utils";
 import type { RepoTree, TreeNode } from "@/lib/types";
 
 type Row =
@@ -20,6 +20,7 @@ const BASE_PAD_PX = 12;
 
 interface TreeListProps {
   tree: RepoTree;
+  entryIndex: EntryIndex;
   expanded: ReadonlySet<string>;
   selectedPath: string | null;
   onToggle: (path: string) => void;
@@ -31,17 +32,17 @@ interface TreeListProps {
  * GitHub-style file browser: the accessible, list-shaped alternative to the
  * map. Shares expand/collapse and selection state with the graph.
  */
-export function TreeList({ tree, expanded, selectedPath, onToggle, onSelect, onCollapseAll }: TreeListProps) {
+export function TreeList({ tree, entryIndex, expanded, selectedPath, onToggle, onSelect, onCollapseAll }: TreeListProps) {
   const { nodes, meta, stats } = tree;
   const [pageLimits, setPageLimits] = useState<Record<string, number>>({});
   const selectedRef = useRef<HTMLDivElement>(null);
 
   const rows = useMemo(() => visibleRows(nodes, expanded, pageLimits), [nodes, expanded, pageLimits]);
 
-  // Bring the selection into view when switching to this tab.
+  // Bring the selection into view when switching to this tab or when it's revealed from elsewhere.
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: "nearest" });
-  }, []);
+  }, [selectedPath]);
 
   function showMore(parent: string) {
     setPageLimits((prev) => ({ ...prev, [parent]: (prev[parent] ?? TREE_LIST_PAGE_SIZE) + TREE_LIST_PAGE_SIZE }));
@@ -83,6 +84,8 @@ export function TreeList({ tree, expanded, selectedPath, onToggle, onSelect, onC
                 node={row.node}
                 expanded={expanded.has(row.node.path)}
                 selected={row.node.path === selectedPath}
+                startHere={entryIndex.byPath.has(row.node.path)}
+                containsStartHere={entryIndex.containers.has(row.node.path)}
                 rowRef={row.node.path === selectedPath ? selectedRef : undefined}
                 onActivate={() => {
                   onSelect(row.node.path);
@@ -122,12 +125,16 @@ function NodeRow({
   node,
   expanded,
   selected,
+  startHere,
+  containsStartHere,
   rowRef,
   onActivate,
 }: {
   node: TreeNode;
   expanded: boolean;
   selected: boolean;
+  startHere: boolean;
+  containsStartHere: boolean;
   rowRef?: React.Ref<HTMLDivElement>;
   onActivate: () => void;
 }) {
@@ -162,6 +169,17 @@ function NodeRow({
           <span className={`truncate ${isDir ? "text-fg" : "text-fg group-hover:text-accent group-hover:underline"}`}>
             {node.name}
           </span>
+          {startHere && (
+            <span className="StartHere shrink-0">
+              <RocketIcon size={12} />
+              Start here
+            </span>
+          )}
+          {containsStartHere && !startHere && (
+            <span className="inline-flex shrink-0 text-success" title="Contains a Start here file">
+              <RocketIcon size={14} aria-label="Contains a Start here file" />
+            </span>
+          )}
           {node.hiddenChildren ? <span className="Label shrink-0">partial</span> : null}
         </span>
         <span className="flex items-center justify-end gap-2 md:justify-start">

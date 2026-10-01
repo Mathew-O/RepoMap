@@ -8,10 +8,11 @@ import {
   GitBranchIcon,
   GitCommitIcon,
   InfoIcon,
+  RocketIcon,
   SkipIcon,
 } from "@primer/octicons-react";
 import dynamic from "next/dynamic";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import type { RevealRequest } from "@/components/graph/repo-graph";
 import { BottomSheet } from "@/components/panel/bottom-sheet";
@@ -21,10 +22,11 @@ import { kindColor } from "@/components/repo/kind";
 import { NodeIcon } from "@/components/repo/node-icon";
 import { RepoHeader, type RepoView } from "@/components/repo/repo-header";
 import { RepoSkeleton } from "@/components/repo/repo-skeleton";
+import { StartHereBar } from "@/components/repo/start-here-bar";
 import { TreeList } from "@/components/repo/tree-list";
 import { useRepoTree } from "@/hooks/use-repo-tree";
 import { formatBytes, formatNumber, shortSha } from "@/lib/format";
-import { ancestorsOf, githubUrl } from "@/lib/tree-utils";
+import { ancestorsOf, githubUrl, indexEntryPoints } from "@/lib/tree-utils";
 import type { RepoTree } from "@/lib/types";
 
 // React Flow measures the DOM, so it only renders in the browser.
@@ -59,6 +61,7 @@ function RepoWorkspace({ tree }: { tree: RepoTree }) {
   // Mobile sheet starts as a peek so a deep link still shows the map; tapping a file opens it.
   const [sheetOpen, setSheetOpen] = useState(false);
   const nonce = useRef(1);
+  const entryIndex = useMemo(() => indexEntryPoints(tree.entryPoints.points, nodes), [tree, nodes]);
 
   const select = useCallback(
     (path: string, options?: SelectOptions) => {
@@ -101,6 +104,7 @@ function RepoWorkspace({ tree }: { tree: RepoTree }) {
       <div className="mx-auto w-full max-w-[1280px] space-y-4 px-4 py-6 md:px-6 lg:px-8">
         <Toolbar tree={tree} />
         <TruncationNotice tree={tree} />
+        <StartHereBar tree={tree} selectedPath={selectedPath} onSelect={select} />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0">
@@ -108,6 +112,7 @@ function RepoWorkspace({ tree }: { tree: RepoTree }) {
               <div className="Box h-[60dvh] min-h-[340px] overflow-hidden lg:h-[calc(100dvh-180px)] lg:max-h-[880px] lg:min-h-[520px]">
                 <RepoGraph
                   tree={tree}
+                  entryIndex={entryIndex}
                   expanded={expanded}
                   selectedPath={selectedPath}
                   reveal={reveal}
@@ -119,6 +124,7 @@ function RepoWorkspace({ tree }: { tree: RepoTree }) {
             ) : (
               <TreeList
                 tree={tree}
+                entryIndex={entryIndex}
                 expanded={expanded}
                 selectedPath={selectedPath}
                 onToggle={toggle}
@@ -152,6 +158,12 @@ function RepoWorkspace({ tree }: { tree: RepoTree }) {
               <NodeIcon node={selectedNode} expanded={expanded.has(selectedPath)} />
               <span className="truncate font-semibold">{selectedNode.name}</span>
               <span className="size-2 shrink-0 rounded-full" style={{ background: kindColor(selectedNode.kind) }} />
+              {entryIndex.byPath.has(selectedPath) && (
+                <span className="StartHere shrink-0">
+                  <RocketIcon size={12} />
+                  Start here
+                </span>
+              )}
             </span>
           }
         >

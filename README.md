@@ -3,9 +3,9 @@
 Understand an unfamiliar GitHub repository: paste a URL and get a map of the codebase, where to start reading,
 and grounded AI explanations of every folder and file.
 
-> **Status:** milestone 2 of 6. Done so far: URL input, GitHub tree fetching with caching, and an interactive
-> map with expand/collapse, pan/zoom, minimap, a details panel (a bottom sheet on mobile) and a GitHub-style
-> file list. Entry-point detection, AI summaries and the import graph come next.
+> **Status:** milestone 3 of 6. Done so far: URL input, GitHub tree fetching with caching, an interactive
+> map with expand/collapse, pan/zoom, minimap, a details panel (a bottom sheet on mobile), a GitHub-style
+> file list, and **Start here** badges on detected entry points. AI summaries and the import graph come next.
 > See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Getting started
@@ -37,6 +37,8 @@ To raise the limit:
 - **Server-wide:** set `GITHUB_TOKEN` in `.env.local`. For safety it is only used for **public** repos.
 
 Trees are cached per commit SHA in `.cache/repomap/` (gitignored), so repeat visits make 0–2 GitHub calls.
+Entry-point detection reads a few manifests (package.json, pyproject.toml, Dockerfile, README…) per commit.
+For public repos those come from `raw.githubusercontent.com`, which doesn't count against the API limit.
 
 ## Deploying to Vercel
 

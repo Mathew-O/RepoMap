@@ -1,5 +1,6 @@
 import "server-only";
 
+import { loadEntryPoints } from "@/lib/analysis/entry-service";
 import { type CacheStore, cacheKeys, getCache } from "@/lib/cache";
 import { MAX_TREE_NODES, REF_CACHE_TTL_SECONDS } from "@/lib/config";
 import { buildTree } from "@/lib/github/build-tree";
@@ -37,10 +38,12 @@ export async function loadRepoTree(input: ParsedRepoUrl, auth: GitHubAuth): Prom
   }
 
   const focusPath = meta.requestedPath && snapshot.nodes[meta.requestedPath] ? meta.requestedPath : null;
+  const entryPoints = await loadEntryPoints(meta, snapshot.nodes, auth);
 
   return {
     ...snapshot,
     meta: { ...meta, focusPath },
+    entryPoints,
     fetchedAt: new Date().toISOString(),
     cached,
   };

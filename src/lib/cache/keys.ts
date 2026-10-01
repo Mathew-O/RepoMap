@@ -9,6 +9,9 @@ const VERSION = "v1";
 /** Bump when classify.ts or build-tree.ts output changes, so old snapshots are ignored. */
 const TREE_FORMAT = 2;
 
+/** Bump when the entry-point heuristics change. */
+const ENTRY_FORMAT = 1;
+
 function repoId(owner: string, repo: string): string {
   return `${owner}/${repo}`.toLowerCase();
 }
@@ -22,7 +25,11 @@ export const cacheKeys = {
   tree: (owner: string, repo: string, sha: string) =>
     `${VERSION}:tree${TREE_FORMAT}:${repoId(owner, repo)}@${sha}`,
 
-  /** M4: raw file contents. */
+  /** "Start here" report. Immutable per commit (unless it was a partial read). */
+  entryPoints: (owner: string, repo: string, sha: string) =>
+    `${VERSION}:entry${ENTRY_FORMAT}:${repoId(owner, repo)}@${sha}`,
+
+  /** Raw file contents. */
   file: (owner: string, repo: string, sha: string, filePath: string) =>
     `${VERSION}:file:${repoId(owner, repo)}@${sha}:${filePath}`,
 

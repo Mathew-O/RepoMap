@@ -23,6 +23,7 @@ import { KIND_LABEL, KIND_ORDER, kindColor } from "@/components/repo/kind";
 import { GRAPH_PAGE_SIZE, LARGE_GRAPH_THRESHOLD } from "@/lib/config";
 import { formatNumber } from "@/lib/format";
 import { NODE_HEIGHT, NODE_WIDTH, ROOT_WIDTH, entryId, layoutTree } from "@/lib/graph/layout";
+import type { EntryIndex } from "@/lib/tree-utils";
 import type { RepoTree } from "@/lib/types";
 
 export interface RevealRequest {
@@ -33,6 +34,7 @@ export interface RevealRequest {
 
 interface RepoGraphProps {
   tree: RepoTree;
+  entryIndex: EntryIndex;
   expanded: ReadonlySet<string>;
   selectedPath: string | null;
   reveal: RevealRequest | null;
@@ -49,7 +51,16 @@ export function RepoGraph(props: RepoGraphProps) {
   );
 }
 
-function GraphCanvas({ tree, expanded, selectedPath, reveal, onSelect, onToggle, onCollapseAll }: RepoGraphProps) {
+function GraphCanvas({
+  tree,
+  entryIndex,
+  expanded,
+  selectedPath,
+  reveal,
+  onSelect,
+  onToggle,
+  onCollapseAll,
+}: RepoGraphProps) {
   const { nodes: treeNodes, meta, stats } = tree;
   const [pageLimits, setPageLimits] = useState<Record<string, number>>({});
   /** React Flow knows its pane size only after init; centering earlier lands in the wrong place. */
@@ -92,6 +103,8 @@ function GraphCanvas({ tree, expanded, selectedPath, reveal, onSelect, onToggle,
               label: isRoot ? meta.fullName : node.name,
               expanded: isRoot || expanded.has(node.path),
               onPath: onPath.has(node.path) && node.path !== selectedPath,
+              startHere: entryIndex.byPath.get(node.path) ?? null,
+              containsStartHere: entryIndex.containers.has(node.path),
             },
           };
         }
@@ -108,7 +121,7 @@ function GraphCanvas({ tree, expanded, selectedPath, reveal, onSelect, onToggle,
           },
         };
       }),
-    [layout, treeNodes, selectedPath, expanded, onPath, meta.fullName],
+    [layout, treeNodes, selectedPath, expanded, onPath, meta.fullName, entryIndex],
   );
 
   const flowEdges = useMemo<Edge[]>(

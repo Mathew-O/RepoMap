@@ -3,8 +3,10 @@ import "server-only";
 import { GITHUB_TIMEOUT_MS } from "@/lib/config";
 import type { GitTreeEntry } from "@/lib/github/build-tree";
 import { RepoMapError } from "@/lib/github/errors";
+import { encodePath } from "@/lib/tree-utils";
 
 const GITHUB_API = "https://api.github.com";
+const GITHUB_RAW = "https://raw.githubusercontent.com";
 
 export type AuthSource = "user" | "server" | "none";
 
@@ -101,22 +103,67 @@ export async function getRecursiveTree(owner: string, repo: string, sha: string,
   return (await res.json()) as GitHubTree;
 }
 
+/**
+ * A file's text at a commit, or null if it doesn't exist there. Public repos
+ * are read from raw.githubusercontent.com, which doesn't count against the
+ * REST API quota; private ones go through the contents API with the caller's token.
+ */
+export async function getFileText(
+  owner: string,
+  repo: string,
+  sha: string,
+  path: string,
+  options: { auth: GitHubAuth; isPrivate: boolean; signal?: AbortSignal },
+): Promise<string | null> {
+  const { auth, isPrivate, signal } = options;
+  try {
+    const res = isPrivate
+      ? await ghFetch(
+          `/repos/${enc(owner)}/${enc(repo)}/contents/${encodePath(path)}?ref=${enc(sha)}`,
+          auth,
+          "application/vnd.github.raw+json",
+          signal,
+        )
+      : await rawFetch(`/${enc(owner)}/${enc(repo)}/${enc(sha)}/${encodePath(path)}`, auth, signal);
+    return await res.text();
+  } catch (err) {
+    if (err instanceof RepoMapError && err.code === "NOT_FOUND") return null;
+    throw err;
+  }
+}
+
 // ─── Transport ───────────────────────────────────────────────────────────
 
-async function ghFetch(path: string, auth: GitHubAuth, accept = "application/vnd.github+json"): Promise<Response> {
+async function ghFetch(
+  path: string,
+  auth: GitHubAuth,
+  accept = "application/vnd.github+json",
+  signal?: AbortSignal,
+): Promise<Response> {
   const headers: Record<string, string> = {
     Accept: accept,
     "X-GitHub-Api-Version": "2022-11-28",
     "User-Agent": "RepoMap",
   };
   if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
+  return send(`${GITHUB_API}${path}`, headers, auth, signal);
+}
 
+async function rawFetch(path: string, auth: GitHubAuth, signal?: AbortSignal): Promise<Response> {
+  const headers: Record<string, string> = { "User-Agent": "RepoMap" };
+  // Optional for public files, but authenticated requests get a higher rate limit.
+  if (auth.token) headers.Authorization = `token ${auth.token}`;
+  return send(`${GITHUB_RAW}${path}`, headers, auth, signal);
+}
+
+async function send(url: string, headers: Record<string, string>, auth: GitHubAuth, signal?: AbortSignal) {
+  const timeout = AbortSignal.timeout(GITHUB_TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetch(`${GITHUB_API}${path}`, {
+    res = await fetch(url, {
       headers,
       cache: "no-store",
-      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
   } catch (err) {
     const timedOut = err instanceof DOMException && err.name === "TimeoutError";

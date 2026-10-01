@@ -1,15 +1,25 @@
 "use client";
 
-import { CheckIcon, CopyIcon, LinkIcon, MarkGithubIcon, SkipIcon, SparkleFillIcon } from "@primer/octicons-react";
+import {
+  AlertIcon,
+  CheckIcon,
+  CopyIcon,
+  LinkIcon,
+  MarkGithubIcon,
+  RocketIcon,
+  SkipIcon,
+  SparkleFillIcon,
+} from "@primer/octicons-react";
 import { useEffect, useId, useMemo, useState } from "react";
 
 import { KIND_LABEL, KIND_ORDER, SKIP_LABEL, kindColor } from "@/components/repo/kind";
 import { NodeIcon } from "@/components/repo/node-icon";
 import { Breadcrumbs } from "@/components/panel/breadcrumbs";
+import { INCOMPLETE_ENTRY_POINTS_NOTE } from "@/components/repo/start-here-bar";
 import { formatBytes, formatNumber } from "@/lib/format";
 import { explorerPath } from "@/lib/github/parse-url";
-import { childCounts, descendantKindCounts, githubUrl } from "@/lib/tree-utils";
-import type { RepoTree, TreeNode } from "@/lib/types";
+import { childCounts, descendantKindCounts, entryPointsUnder, githubUrl } from "@/lib/tree-utils";
+import type { EntryPoint, RepoTree, TreeNode } from "@/lib/types";
 
 const CONTENTS_PREVIEW = 12;
 
@@ -34,6 +44,7 @@ export function DetailsPanel({
   if (!node) return null;
   const isRoot = path === "";
   const isDir = node.type === "dir";
+  const entry = tree.entryPoints.points.find((p) => p.path === path);
 
   return (
     <div className="flex flex-col gap-4">
@@ -47,6 +58,9 @@ export function DetailsPanel({
         </div>
         {isRoot && tree.meta.description && <p className="text-sm text-fg-muted">{tree.meta.description}</p>}
       </div>
+
+      {entry && <WhyStartHere entry={entry} />}
+      {isDir && <StartHereList tree={tree} dir={path} onSelect={onSelect} />}
 
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 border-y border-border py-3 text-sm">
         <dt className="text-fg-muted">Type</dt>
@@ -102,6 +116,83 @@ export function DetailsPanel({
 
       <Actions tree={tree} node={node} />
     </div>
+  );
+}
+
+function WhyStartHere({ entry }: { entry: EntryPoint }) {
+  const headingId = useId();
+  return (
+    <section aria-labelledby={headingId} className="rounded-md border border-border bg-canvas-subtle p-3">
+      <h3 id={headingId} className="flex items-center gap-2 text-sm font-semibold">
+        <span className="StartHere">
+          <RocketIcon size={12} />
+          Start here
+        </span>
+        Why this is a good first read
+      </h3>
+      <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm break-words">
+        {entry.reasons.map((reason) => (
+          <li key={reason}>{reason}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** The repo's (or a folder's) "Start here" files, each with its strongest reason. */
+function StartHereList({
+  tree,
+  dir,
+  onSelect,
+}: {
+  tree: RepoTree;
+  dir: string;
+  onSelect: (path: string, options?: { reveal?: boolean }) => void;
+}) {
+  const headingId = useId();
+  const points = entryPointsUnder(dir, tree.entryPoints.points).filter((p) => p.path !== dir);
+  if (points.length === 0) return null;
+  const isRoot = dir === "";
+
+  return (
+    <section aria-labelledby={headingId} className="space-y-2">
+      <h3 id={headingId} className="flex items-center gap-1.5 text-sm font-semibold">
+        <RocketIcon size={16} className="text-success" />
+        {isRoot ? "Start here" : "Start here in this folder"}
+      </h3>
+      <ul className="Box divide-y divide-border-muted overflow-hidden text-sm">
+        {points.map((point) => {
+          const node = tree.nodes[point.path];
+          if (!node) return null;
+          return (
+            <li key={point.path}>
+              <button
+                type="button"
+                onClick={() => onSelect(point.path, { reveal: true })}
+                className="flex w-full cursor-pointer items-start gap-2 px-3 py-2 text-left hover:bg-row-hover"
+              >
+                <span className="mt-0.5">
+                  <NodeIcon node={node} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{isRoot ? point.path : point.path.slice(dir.length + 1)}</span>
+                  <span className="block truncate text-xs text-fg-muted">{point.reasons[0]}</span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {isRoot && tree.entryPoints.incomplete && (
+        <p className="flex items-start gap-1.5 text-xs text-fg-muted">
+          <AlertIcon size={12} className="mt-0.5 shrink-0 text-attention" />
+          {INCOMPLETE_ENTRY_POINTS_NOTE}
+        </p>
+      )}
+      {isRoot && (
+        <p className="text-xs text-fg-muted">Found from the repository&apos;s manifests, configs and file names.</p>
+      )}
+    </section>
   );
 }
 
