@@ -14,6 +14,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 
 import { KIND_LABEL, KIND_ORDER, SKIP_LABEL, kindColor } from "@/components/repo/kind";
 import { NodeIcon } from "@/components/repo/node-icon";
+import { SummarySection } from "@/components/ai/summary-section";
 import { Breadcrumbs } from "@/components/panel/breadcrumbs";
 import { INCOMPLETE_ENTRY_POINTS_NOTE } from "@/components/repo/start-here-bar";
 import { formatBytes, formatNumber } from "@/lib/format";
@@ -34,17 +35,19 @@ const TYPE_LABEL: Record<TreeNode["type"], string> = {
 export function DetailsPanel({
   tree,
   path,
+  entryPoints,
   onSelect,
 }: {
   tree: RepoTree;
   path: string;
+  entryPoints: EntryPoint[];
   onSelect: (path: string, options?: { reveal?: boolean }) => void;
 }) {
   const node = tree.nodes[path];
   if (!node) return null;
   const isRoot = path === "";
   const isDir = node.type === "dir";
-  const entry = tree.entryPoints.points.find((p) => p.path === path);
+  const entry = entryPoints.find((p) => p.path === path);
 
   return (
     <div className="flex flex-col gap-4">
@@ -59,8 +62,9 @@ export function DetailsPanel({
         {isRoot && tree.meta.description && <p className="text-sm text-fg-muted">{tree.meta.description}</p>}
       </div>
 
+      {!isRoot && <SummarySection key={path} tree={tree} node={node} />}
       {entry && <WhyStartHere entry={entry} />}
-      {isDir && <StartHereList tree={tree} dir={path} onSelect={onSelect} />}
+      {isDir && <StartHereList tree={tree} dir={path} points={entryPoints} onSelect={onSelect} />}
 
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 border-y border-border py-3 text-sm">
         <dt className="text-fg-muted">Type</dt>
@@ -131,8 +135,11 @@ function WhyStartHere({ entry }: { entry: EntryPoint }) {
         Why this is a good first read
       </h3>
       <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm break-words">
-        {entry.reasons.map((reason) => (
-          <li key={reason}>{reason}</li>
+        {entry.reasons.map((reason, i) => (
+          <li key={reason}>
+            {reason}
+            {i === 0 && entry.source === "llm" && <span className="ml-1.5 text-xs text-fg-muted">(AI overview)</span>}
+          </li>
         ))}
       </ul>
     </section>
@@ -143,14 +150,16 @@ function WhyStartHere({ entry }: { entry: EntryPoint }) {
 function StartHereList({
   tree,
   dir,
+  points: allPoints,
   onSelect,
 }: {
   tree: RepoTree;
   dir: string;
+  points: EntryPoint[];
   onSelect: (path: string, options?: { reveal?: boolean }) => void;
 }) {
   const headingId = useId();
-  const points = entryPointsUnder(dir, tree.entryPoints.points).filter((p) => p.path !== dir);
+  const points = entryPointsUnder(dir, allPoints).filter((p) => p.path !== dir);
   if (points.length === 0) return null;
   const isRoot = dir === "";
 
@@ -190,7 +199,11 @@ function StartHereList({
         </p>
       )}
       {isRoot && (
-        <p className="text-xs text-fg-muted">Found from the repository&apos;s manifests, configs and file names.</p>
+        <p className="text-xs text-fg-muted">
+          {points.some((p) => p.source === "llm")
+            ? "Picked by the AI overview and checked against the repository’s manifests, configs and file names."
+            : "Found from the repository’s manifests, configs and file names."}
+        </p>
       )}
     </section>
   );

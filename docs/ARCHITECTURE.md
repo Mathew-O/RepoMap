@@ -14,9 +14,8 @@ src/
 │  │  └─ page.tsx                     /vercel/next.js/tree/canary/packages works
 │  └─ api/
 │     ├─ repo/route.ts                GET  repo metadata + normalized file tree
-│     ├─ file/route.ts           (M4) GET  file contents on demand (size-capped)
-│     ├─ summary/route.ts        (M4) POST streamed file/folder summary
-│     ├─ overview/route.ts       (M4) POST streamed project overview + reading order
+│     ├─ summaries/route.ts           POST streamed file/folder summaries (NDJSON, ≤ 8 paths per request)
+│     ├─ overview/route.ts            POST streamed project overview + reading order (NDJSON)
 │     └─ details/route.ts        (M5) GET  symbols, imports, imported-by for a file
 ├─ components/
 │  ├─ layout/                         SiteHeader, SiteFooter
@@ -24,9 +23,10 @@ src/
 │  ├─ repo/                           RepoExplorer/Workspace (shared view state), RepoHeader (Map/Files tabs),
 │  │                                  StartHereBar, TreeList, NodeIcon, ErrorState, skeletons
 │  ├─ graph/                          RepoGraph (React Flow canvas), custom entry/"more" nodes
-│  ├─ panel/                          DetailsPanel, Breadcrumbs, mobile BottomSheet (AI summary lands here in M4)
+│  ├─ panel/                          DetailsPanel, Breadcrumbs, mobile BottomSheet
+│  ├─ ai/                             OverviewCard, SummarySection, SummaryText, SummaryProvider (store context)
 │  └─ ui/                             Small Primer-style primitives (Flash, Label, Counter…)
-├─ hooks/                             useRepoTree (+ later useSummary, useReadingPath)
+├─ hooks/                             useRepoTree, useOverview
 └─ lib/
    ├─ types.ts                        ★ Shared data model (client + server)
    ├─ config.ts                       Limits: node cap, file size cap, TTLs
@@ -48,7 +48,11 @@ src/
    │  ├─ file-store.ts                JSON files on disk (swap for Redis/Postgres here)
    │  ├─ keys.ts                      Versioned key builders
    │  └─ index.ts                     getCache() singleton
-   ├─ client/                         Browser-only: token storage, API fetchers
+   ├─ client/                         Browser-only: token storage, API fetchers, NDJSON reader,
+   │                                  SummaryStore (queue, batching, per-path state)
+   ├─ jobs.ts                         In-flight work shared between concurrent requests (singleflight)
+   ├─ http.ts                         JSON errors, NDJSON streaming responses, request validation
+   ├─ rate-limit.ts                   Per-visitor sliding-window limiter (in memory)
    ├─ analysis/
    │  ├─ resolve.ts                   Manifest/command references → real tree paths (dist → src, module → file); pure
    │  ├─ commands.ts                  Shell command → files it runs (node x, python -m, go run ./cmd/x, npm start…); pure
@@ -57,7 +61,16 @@ src/
    │  ├─ entry-points.ts              Path conventions + read plan + scoring/ranking; pure
    │  ├─ entry-service.ts             Reads the plan within a time budget, detects, caches (server only)
    │  └─ imports/…               (M5) import graph for JS/TS, Python, Go, Rust
-   └─ ai/                        (M4) anthropic.ts, prompts.ts, grounding helpers
+   └─ ai/
+      ├─ provider.ts                  AiProvider interface; picks Anthropic, mock (dev) or none
+      ├─ anthropic-provider.ts        Official SDK: streaming, refusal fallbacks, prompt-cached repo context
+      ├─ mock-provider.ts             REPOMAP_AI_MOCK=1 only: streams placeholder text
+      ├─ prompts.ts                   System prompts, repo context, file/folder prompts, static summaries; pure
+      ├─ overview-format.ts           Overview prompt, JSON schema, validation, partial-JSON streaming; pure
+      ├─ prefetch.ts                  Which paths to summarize up front, and in what order; pure
+      ├─ context.ts                   Per-request: access check, tree, entry points, README (server)
+      ├─ summaries.ts / overview.ts   Cache → share in-flight → generate → cache (server)
+      └─ errors.ts                    SDK errors → visitor-safe RepoMapErrors
 ```
 
 ## Data model (`src/lib/types.ts`)
@@ -76,14 +89,14 @@ TreeNode      path ('' = root), name, type (dir|file|submodule|symlink), parent,
 RepoTree      meta + nodes: Record<path, TreeNode> + stats + truncation + entryPoints + cached flag
 EntryPoint    path, reasons[] (strongest first), source (heuristic|llm), score 0–1
 EntryPointReport  points[] (ranked), filesRead[], incomplete (some reads failed → short TTL)
+Summary       path, target (file|folder), text, status (ok|unclear|skipped|too-large|empty), truncated?, model, createdAt
+ProjectOverview   what, techStack[], whereToStart, startHere[{path, why}], readingOrder[{path, why}], model
 ApiError      code (INVALID_URL | NOT_FOUND | RATE_LIMITED | BAD_TOKEN | …), message, hint, resetAt
 ```
 
 Planned shapes, already declared in `types.ts` so later milestones plug in:
 
 ```ts
-Summary          (M4) path, target (file|folder|overview), text, status, model, createdAt
-ProjectOverview  (M4) what, techStack[], whereToStart, readingOrder[{path, why}]
 FileDetails      (M5) path, language, symbols[], imports[{specifier, resolved, external}], importedBy[]
 ```
 
@@ -97,8 +110,9 @@ A Redis or Postgres store only has to implement the same three methods.
 | `v1:ref:{owner}/{repo}:{treeish}` | resolved meta + commit SHA (**public repos only**) | 5 min |
 | `v1:tree2:{owner}/{repo}@{sha}` | normalized tree snapshot (the number is `TREE_FORMAT`, bumped when classification changes) | ∞ (immutable per SHA) |
 | `v1:entry1:{owner}/{repo}@{sha}` | entry-point report (the number is `ENTRY_FORMAT`, bumped when heuristics change) | ∞, or 10 min if some manifests couldn't be read |
-| `v1:file:{owner}/{repo}@{sha}:{path}` | file contents (manifests today; any file in M4) | ∞ |
-| `v1:sum:{owner}/{repo}@{sha}:{path}:{promptVersion}` (M4) | summary | ∞ |
+| `v1:file:{owner}/{repo}@{sha}:{path}` | file contents (manifests, summarized files) | ∞ |
+| `v1:sum:{owner}/{repo}@{sha}:{promptVersion}:{model}:{path}` | file/folder summary | ∞ |
+| `v1:overview:{owner}/{repo}@{sha}:{promptVersion}:{model}` | project overview | ∞ |
 
 Access control: every request re-checks repo access with the caller's own credentials
 before it reads any SHA-keyed cache entry. The only exception is the short-lived ref cache,
@@ -159,3 +173,35 @@ server's `GITHUB_TOKEN`; they need the visitor's own token.
 The UI shows them as a "Start here" strip above the map (every screen size), filled green badges on map nodes
 and Files rows, a green rocket on folders that contain one (so the collapsed top level shows where to go),
 and the reasons in the details panel. Milestone 4's overview step will refine this list with the LLM.
+
+## AI summaries (milestone 4)
+
+```
+OverviewCard ─ useOverview ──────────── POST /api/overview  {repo, sha}
+SummaryProvider ─ SummaryStore ─ queue ─ POST /api/summaries {repo, sha, paths ≤ 8}   (2 requests at a time)
+   ▲ details panel, Files column, map tooltips subscribe per path (useSyncExternalStore)
+
+route: validate → provider? (else 503 AI_UNAVAILABLE) → loadAiContext (access check with the caller's
+       credentials, tree, entry points) → NDJSON stream
+summarizePath: static text (skipped/empty/submodule) │ cache hit │ runShared(key) → provider.stream → cache
+```
+
+- **Grounding.** File prompts carry the file itself (cut at a line boundary past 24,000 characters, with a note
+  the model must repeat), its path, size, siblings and any entry-point evidence. Folder prompts roll up the
+  children's existing summaries plus the openings of up to six unsummarized files. The overview gets the
+  README, manifests, the first lines of entry-point files and a list of real paths; every path it returns
+  is checked against the tree and unknown ones are dropped. The model starts answers with "Unclear:" when
+  the content doesn't say what something is for, and the UI labels those.
+- **Caching.** The system prompt plus a per-repo context block (layout, entry points, README excerpt) form
+  a byte-identical prefix marked for prompt caching, so summarizing many files of one repo reads it at
+  cache prices. Results are cached per commit, keyed by prompt version and model.
+- **Sharing.** `runShared` keys in-flight work by cache key: if the prefetch and a click ask for the same
+  file, there's one model call and both streams get every delta. A client disconnecting doesn't cancel it.
+- **Order.** Prefetch covers the top two levels: second-level files, then second-level folders, then the
+  top level, so folder roll-ups find their children already summarized. Clicks jump the queue.
+- **Streaming.** Summaries stream text deltas. The overview uses structured output, and its `what` field is
+  read out of the partial JSON while the rest streams.
+- **Failure modes.** No credentials → `ai: "off"` on `/api/repo`, and the UI shows a notice instead of
+  calling. Rate limits, refusals and API errors become visitor-safe errors per path; "AI unavailable" and
+  rate limits stop the queue instead of failing every file one by one.
+

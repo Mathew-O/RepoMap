@@ -1,7 +1,11 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
+import { aiMode } from "@/lib/ai/provider";
+import { dedupe } from "@/lib/jobs";
 import { loadEntryPoints } from "@/lib/analysis/entry-service";
-import { type CacheStore, cacheKeys, getCache } from "@/lib/cache";
+import { cacheKeys, getCache } from "@/lib/cache";
 import { MAX_TREE_NODES, REF_CACHE_TTL_SECONDS } from "@/lib/config";
 import { buildTree } from "@/lib/github/build-tree";
 import {
@@ -24,18 +28,8 @@ const MAX_REF_SEGMENTS = 6;
  * public repos), so one visitor's cached data never leaks to another.
  */
 export async function loadRepoTree(input: ParsedRepoUrl, auth: GitHubAuth): Promise<RepoTree> {
-  const cache = getCache();
-  const meta = await resolveRepo(input, auth, cache);
-
-  const key = cacheKeys.tree(meta.owner, meta.repo, meta.commitSha);
-  let snapshot = await cache.get<TreeSnapshot>(key);
-  const cached = snapshot !== undefined;
-
-  if (!snapshot) {
-    const raw = await getRecursiveTree(meta.owner, meta.repo, meta.commitSha, auth);
-    snapshot = buildTree(raw.tree, { maxNodes: MAX_TREE_NODES, truncatedByGitHub: raw.truncated });
-    await cache.set(key, snapshot);
-  }
+  const meta = await resolveRepo(input, auth);
+  const { snapshot, cached } = await loadSnapshot(meta, auth);
 
   const focusPath = meta.requestedPath && snapshot.nodes[meta.requestedPath] ? meta.requestedPath : null;
   const entryPoints = await loadEntryPoints(meta, snapshot.nodes, auth);
@@ -44,16 +38,53 @@ export async function loadRepoTree(input: ParsedRepoUrl, auth: GitHubAuth): Prom
     ...snapshot,
     meta: { ...meta, focusPath },
     entryPoints,
+    ai: aiMode(),
     fetchedAt: new Date().toISOString(),
     cached,
   };
 }
 
-async function resolveRepo(input: ParsedRepoUrl, auth: GitHubAuth, cache: CacheStore): Promise<RepoMeta> {
+/**
+ * One exact commit, as the AI endpoints request it. Same access rules as
+ * loadRepoTree, and it confirms the SHA belongs to this repository.
+ */
+export function resolveRepoAtCommit(owner: string, repo: string, sha: string, auth: GitHubAuth): Promise<RepoMeta> {
+  return resolveRepo({ owner, repo, treeish: sha }, auth);
+}
+
+/** The commit's tree from cache, or from GitHub (once, even if several requests ask at the same time). */
+export async function loadSnapshot(meta: RepoMeta, auth: GitHubAuth): Promise<{ snapshot: TreeSnapshot; cached: boolean }> {
+  const cache = getCache();
+  const key = cacheKeys.tree(meta.owner, meta.repo, meta.commitSha);
+  const hit = await cache.get<TreeSnapshot>(key);
+  if (hit) return { snapshot: hit, cached: true };
+
+  // Safe to share: every caller passed its own access check in resolveRepo first.
+  const snapshot = await dedupe(key, async () => {
+    const raw = await getRecursiveTree(meta.owner, meta.repo, meta.commitSha, auth);
+    const built = buildTree(raw.tree, { maxNodes: MAX_TREE_NODES, truncatedByGitHub: raw.truncated });
+    await cache.set(key, built);
+    return built;
+  });
+  return { snapshot, cached: false };
+}
+
+async function resolveRepo(input: ParsedRepoUrl, auth: GitHubAuth): Promise<RepoMeta> {
+  const cache = getCache();
   const refKey = cacheKeys.ref(input.owner, input.repo, input.treeish);
   const hit = await cache.get<RepoMeta>(refKey);
   if (hit) return hit;
+  // Concurrent requests (e.g. several summary batches) share one lookup, but only
+  // with callers holding the same credentials, since the answer depends on them.
+  return dedupe(`${refKey}|${authIdentity(auth)}`, () => fetchRepoMeta(input, auth, refKey));
+}
 
+function authIdentity(auth: GitHubAuth): string {
+  return auth.token ? `${auth.source}:${createHash("sha256").update(auth.token).digest("hex").slice(0, 16)}` : auth.source;
+}
+
+async function fetchRepoMeta(input: ParsedRepoUrl, auth: GitHubAuth, refKey: string): Promise<RepoMeta> {
+  const cache = getCache();
   const gh = await getRepository(input.owner, input.repo, auth);
 
   // Never use the deployer's token to expose their private repos to visitors.

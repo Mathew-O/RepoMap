@@ -4,7 +4,7 @@ import { AlertIcon, RocketIcon } from "@primer/octicons-react";
 
 import { NodeIcon } from "@/components/repo/node-icon";
 import { shortLabel } from "@/lib/tree-utils";
-import type { RepoTree, TreeNode } from "@/lib/types";
+import type { EntryPoint, RepoTree, TreeNode } from "@/lib/types";
 
 export const INCOMPLETE_ENTRY_POINTS_NOTE =
   "Some config files couldn't be read (GitHub rate limit or timeout), so this list may be missing entries. Reload in a few minutes to retry.";
@@ -15,14 +15,17 @@ export const INCOMPLETE_ENTRY_POINTS_NOTE =
  */
 export function StartHereBar({
   tree,
+  points,
   selectedPath,
   onSelect,
 }: {
   tree: RepoTree;
+  /** Heuristic entry points, refined by the AI overview once it arrives. */
+  points: EntryPoint[];
   selectedPath: string;
   onSelect: (path: string, options?: { reveal?: boolean }) => void;
 }) {
-  const { points, incomplete } = tree.entryPoints;
+  const { incomplete } = tree.entryPoints;
   const paths = points.map((p) => p.path);
   const readme = points.length === 0 ? findReadme(tree) : null;
 

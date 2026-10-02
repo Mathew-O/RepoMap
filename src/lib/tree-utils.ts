@@ -1,4 +1,4 @@
-import type { EntryPoint, FileKind, RepoMeta, TreeNode } from "@/lib/types";
+import type { EntryPoint, FileKind, ReadingStep, RepoMeta, TreeNode } from "@/lib/types";
 
 type Nodes = Record<string, TreeNode>;
 
@@ -85,4 +85,26 @@ export function shortLabel(path: string, siblings: readonly string[]): string {
   const duplicate = siblings.some((other) => other !== path && other.slice(other.lastIndexOf("/") + 1) === name);
   if (segments.length > 1 && (duplicate || GENERIC_NAME_RE.test(name))) return segments.slice(-2).join("/");
   return name;
+}
+
+/**
+ * The AI overview's start-here picks first (with its reason leading), then the
+ * heuristic picks it didn't mention. Paths are re-checked against the tree.
+ */
+export function mergeEntryPoints(heuristic: EntryPoint[], ai: ReadingStep[] | undefined, nodes: Nodes, max: number): EntryPoint[] {
+  if (!ai?.length) return heuristic;
+  const byPath = new Map(heuristic.map((p) => [p.path, p]));
+  const picked: EntryPoint[] = [];
+  for (const step of ai) {
+    if (!nodes[step.path] || picked.some((p) => p.path === step.path)) continue;
+    const known = byPath.get(step.path);
+    picked.push({
+      path: step.path,
+      reasons: [...new Set([step.why, ...(known?.reasons ?? [])])].filter(Boolean).slice(0, 4),
+      source: "llm",
+      score: Math.max(known?.score ?? 0, 0.9),
+    });
+  }
+  const rest = heuristic.filter((p) => !picked.some((q) => q.path === p.path));
+  return [...picked, ...rest].slice(0, max);
 }

@@ -14,6 +14,8 @@ import {
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useRef, useState } from "react";
 
+import { OverviewCard } from "@/components/ai/overview-card";
+import { SummaryProvider } from "@/components/ai/summary-context";
 import type { RevealRequest } from "@/components/graph/repo-graph";
 import { BottomSheet } from "@/components/panel/bottom-sheet";
 import { DetailsPanel } from "@/components/panel/details-panel";
@@ -24,9 +26,11 @@ import { RepoHeader, type RepoView } from "@/components/repo/repo-header";
 import { RepoSkeleton } from "@/components/repo/repo-skeleton";
 import { StartHereBar } from "@/components/repo/start-here-bar";
 import { TreeList } from "@/components/repo/tree-list";
+import { useOverview } from "@/hooks/use-overview";
 import { useRepoTree } from "@/hooks/use-repo-tree";
+import { MAX_ENTRY_POINTS } from "@/lib/config";
 import { formatBytes, formatNumber, shortSha } from "@/lib/format";
-import { ancestorsOf, githubUrl, indexEntryPoints } from "@/lib/tree-utils";
+import { ancestorsOf, githubUrl, indexEntryPoints, mergeEntryPoints } from "@/lib/tree-utils";
 import type { RepoTree } from "@/lib/types";
 
 // React Flow measures the DOM, so it only renders in the browser.
@@ -41,7 +45,11 @@ export function RepoExplorer({ input }: { input: string }) {
   if (state.status === "loading") return <RepoSkeleton />;
   if (state.status === "error") return <ErrorState error={state.error} input={input} onRetry={retry} />;
   // Re-key per commit + URL so view state resets when navigating to another repo or ref.
-  return <RepoWorkspace key={`${input}@${state.data.meta.commitSha}`} tree={state.data} />;
+  return (
+    <SummaryProvider key={`${input}@${state.data.meta.commitSha}`} tree={state.data}>
+      <RepoWorkspace tree={state.data} />
+    </SummaryProvider>
+  );
 }
 
 type SelectOptions = { reveal?: boolean };
@@ -61,7 +69,13 @@ function RepoWorkspace({ tree }: { tree: RepoTree }) {
   // Mobile sheet starts as a peek so a deep link still shows the map; tapping a file opens it.
   const [sheetOpen, setSheetOpen] = useState(false);
   const nonce = useRef(1);
-  const entryIndex = useMemo(() => indexEntryPoints(tree.entryPoints.points, nodes), [tree, nodes]);
+  const overview = useOverview(tree);
+  const aiStartHere = overview.state.status === "done" ? overview.state.overview.startHere : undefined;
+  const entryPoints = useMemo(
+    () => mergeEntryPoints(tree.entryPoints.points, aiStartHere, nodes, MAX_ENTRY_POINTS),
+    [tree, aiStartHere, nodes],
+  );
+  const entryIndex = useMemo(() => indexEntryPoints(entryPoints, nodes), [entryPoints, nodes]);
 
   const select = useCallback(
     (path: string, options?: SelectOptions) => {
@@ -104,7 +118,8 @@ function RepoWorkspace({ tree }: { tree: RepoTree }) {
       <div className="mx-auto w-full max-w-[1280px] space-y-4 px-4 py-6 md:px-6 lg:px-8">
         <Toolbar tree={tree} />
         <TruncationNotice tree={tree} />
-        <StartHereBar tree={tree} selectedPath={selectedPath} onSelect={select} />
+        <OverviewCard tree={tree} state={overview.state} onRetry={overview.retry} onSelect={select} />
+        <StartHereBar tree={tree} points={entryPoints} selectedPath={selectedPath} onSelect={select} />
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="min-w-0">
@@ -136,7 +151,7 @@ function RepoWorkspace({ tree }: { tree: RepoTree }) {
 
           <aside aria-label="Details" className="hidden lg:block">
             <div className="Box sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto p-4">
-              <DetailsPanel tree={tree} path={selectedPath} onSelect={select} />
+              <DetailsPanel tree={tree} path={selectedPath} entryPoints={entryPoints} onSelect={select} />
             </div>
           </aside>
         </div>
@@ -167,7 +182,7 @@ function RepoWorkspace({ tree }: { tree: RepoTree }) {
             </span>
           }
         >
-          <DetailsPanel tree={tree} path={selectedPath} onSelect={select} />
+          <DetailsPanel tree={tree} path={selectedPath} entryPoints={entryPoints} onSelect={select} />
         </BottomSheet>
       )}
     </>

@@ -3,6 +3,7 @@
 import { ChevronRightIcon, FoldIcon, InfoIcon, RocketIcon } from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useSummary } from "@/components/ai/summary-context";
 import { KIND_LABEL, KIND_ORDER, SKIP_LABEL, kindColor } from "@/components/repo/kind";
 import { NodeIcon } from "@/components/repo/node-icon";
 import { TREE_LIST_PAGE_SIZE } from "@/lib/config";
@@ -152,7 +153,7 @@ function NodeRow({
       <button
         type="button"
         onClick={onActivate}
-        className={`group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 pr-4 text-left text-sm md:grid-cols-[minmax(0,1fr)_150px_96px] ${
+        className={`group grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 pr-4 text-left text-sm md:grid-cols-[minmax(0,1fr)_150px_96px] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_120px_88px] ${
           selected ? "bg-row-selected" : "hover:bg-row-hover"
         }`}
       >
@@ -182,6 +183,7 @@ function NodeRow({
           )}
           {node.hiddenChildren ? <span className="Label shrink-0">partial</span> : null}
         </span>
+        <RowSummary path={node.path} />
         <span className="flex items-center justify-end gap-2 md:justify-start">
           <span className="inline-flex items-center gap-1.5 text-xs text-fg-muted" title={KIND_LABEL[node.kind]}>
             <span className="size-2 shrink-0 rounded-full" style={{ background: kindColor(node.kind) }} />
@@ -196,6 +198,18 @@ function NodeRow({
         <span className="hidden text-right text-xs text-fg-muted tabular-nums md:block">{sizeText(node)}</span>
       </button>
     </div>
+  );
+}
+
+/** The AI summary in the column where GitHub shows the last commit message. */
+function RowSummary({ path }: { path: string }) {
+  const entry = useSummary(path);
+  const text = entry?.status === "done" ? entry.summary.text : entry?.status === "streaming" ? entry.text : "";
+  const plain = text.replace(/`/g, "");
+  return (
+    <span className="hidden truncate text-xs text-fg-muted lg:block" title={plain || undefined}>
+      {plain}
+    </span>
   );
 }
 

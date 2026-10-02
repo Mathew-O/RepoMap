@@ -4,6 +4,7 @@ import { ChevronRightIcon, InfoIcon, KebabHorizontalIcon, RocketIcon } from "@pr
 import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
 import { memo } from "react";
 
+import { useSummary } from "@/components/ai/summary-context";
 import { KIND_LABEL, SKIP_LABEL, kindColor } from "@/components/repo/kind";
 import { NodeIcon } from "@/components/repo/node-icon";
 import { formatBytes, formatNumber } from "@/lib/format";
@@ -33,6 +34,7 @@ const hiddenHandle = "!pointer-events-none !size-px !min-h-0 !min-w-0 !border-0 
 
 function EntryNodeComponent({ data, selected }: NodeProps<EntryFlowNode>) {
   const { node, label, expanded, onPath, startHere, containsStartHere } = data;
+  const summary = useSummary(node.path);
   const isRoot = node.path === "";
   const isDir = node.type === "dir";
   const muted = Boolean(node.skip);
@@ -48,7 +50,7 @@ function EntryNodeComponent({ data, selected }: NodeProps<EntryFlowNode>) {
       className={`group relative flex h-full w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md border bg-canvas pr-2.5 pl-3.5 text-[13px] transition-[border-color,box-shadow] duration-100 ${ring} ${
         isRoot ? "bg-canvas-subtle font-semibold" : ""
       } ${muted ? "border-dashed" : ""}`}
-      title={nodeTitle(data)}
+      title={nodeTitle(data, summary?.status === "done" ? summary.summary.text : null)}
     >
       <Handle type="target" position={Position.Left} isConnectable={false} className={hiddenHandle} />
       <span
@@ -83,8 +85,9 @@ function EntryNodeComponent({ data, selected }: NodeProps<EntryFlowNode>) {
   );
 }
 
-function nodeTitle({ node, label, startHere, containsStartHere }: EntryNodeData): string {
+function nodeTitle({ node, label, startHere, containsStartHere }: EntryNodeData, summary: string | null): string {
   const lines = [node.path || label];
+  if (summary) lines.push(summary.replace(/`/g, ""));
   if (node.skip) lines.push(SKIP_LABEL[node.skip].title);
   if (startHere) lines.push(`Start here: ${startHere.reasons.join("; ")}`);
   else if (containsStartHere) lines.push("Contains a Start here file");

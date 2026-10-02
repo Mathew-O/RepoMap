@@ -1,6 +1,7 @@
 import type { ApiError, ApiErrorCode } from "@/lib/types";
 
 const DEFAULT_STATUS: Record<ApiErrorCode, number> = {
+  BAD_REQUEST: 400,
   INVALID_URL: 400,
   NOT_FOUND: 404,
   PRIVATE_REPO: 403,
@@ -12,6 +13,10 @@ const DEFAULT_STATUS: Record<ApiErrorCode, number> = {
   BLOCKED: 451,
   UPSTREAM: 502,
   NETWORK: 504,
+  AI_UNAVAILABLE: 503,
+  AI_RATE_LIMITED: 429,
+  AI_REFUSED: 422,
+  AI_ERROR: 502,
 };
 
 /** An error that's safe to show to the user as-is. */

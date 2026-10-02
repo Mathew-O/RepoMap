@@ -33,7 +33,11 @@ export const cacheKeys = {
   file: (owner: string, repo: string, sha: string, filePath: string) =>
     `${VERSION}:file:${repoId(owner, repo)}@${sha}:${filePath}`,
 
-  /** M4: AI summary of a file, folder ("path/") or the overview (""). */
-  summary: (owner: string, repo: string, sha: string, filePath: string, promptVersion: string) =>
-    `${VERSION}:sum:${repoId(owner, repo)}@${sha}:${filePath}:${promptVersion}`,
+  /** AI summary of a file or folder. `variant` = prompt version + model, so either change regenerates. */
+  summary: (owner: string, repo: string, sha: string, filePath: string, variant: string) =>
+    `${VERSION}:sum:${repoId(owner, repo)}@${sha}:${variant}:${filePath}`,
+
+  /** AI project overview. */
+  overview: (owner: string, repo: string, sha: string, variant: string) =>
+    `${VERSION}:overview:${repoId(owner, repo)}@${sha}:${variant}`,
 };

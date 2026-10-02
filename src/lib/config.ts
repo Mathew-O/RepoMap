@@ -36,3 +36,30 @@ export const MAX_ENTRY_POINTS = 8;
 
 /** Entry points computed from a partial read are retried after this long instead of cached forever. */
 export const INCOMPLETE_ENTRY_POINTS_TTL_SECONDS = 600;
+
+/** Claude model for summaries and the overview. Override with REPOMAP_AI_MODEL. */
+export const DEFAULT_AI_MODEL = "claude-opus-5-5";
+
+/** Characters of a file shown to the model; longer files are cut and the summary says so. */
+export const SUMMARY_MAX_FILE_CHARS = 24_000;
+
+/** Folder summaries: how many child files without summaries get an excerpt, and how long. */
+export const FOLDER_EXCERPT_FILES = 6;
+export const FOLDER_EXCERPT_CHARS = 2_000;
+
+/** Paths per POST /api/summaries request (keeps each request well under serverless time limits). */
+export const SUMMARY_PATHS_PER_REQUEST = 8;
+
+/** Summaries generated up front for the top two levels of the tree. */
+export const SUMMARY_PREFETCH_LIMIT = 30;
+
+/** Overview inputs. */
+export const OVERVIEW_README_CHARS = 8_000;
+export const OVERVIEW_MANIFEST_CHARS = 3_000;
+export const OVERVIEW_ENTRY_FILE_CHARS = 5_000;
+export const OVERVIEW_MAX_LISTED_PATHS = 400;
+
+/** Per-visitor AI generation limits (in-memory, per server instance). */
+export const AI_LIMIT_WINDOW_SECONDS = 600;
+export const AI_LIMIT_SUMMARIES = 150;
+export const AI_LIMIT_OVERVIEWS = 15;

@@ -120,6 +120,8 @@ export interface RepoTree extends TreeSnapshot {
   meta: RepoMeta;
   /** "Start here" candidates for this commit. */
   entryPoints: EntryPointReport;
+  /** Whether this server can generate AI summaries. */
+  ai: AiMode;
   fetchedAt: string;
   /** True if the tree came from cache rather than GitHub. */
   cached: boolean;
@@ -128,6 +130,7 @@ export interface RepoTree extends TreeSnapshot {
 // ─── Errors ──────────────────────────────────────────────────────────────
 
 export type ApiErrorCode =
+  | "BAD_REQUEST"
   | "INVALID_URL"
   | "NOT_FOUND"
   | "PRIVATE_REPO"
@@ -138,7 +141,11 @@ export type ApiErrorCode =
   | "FORBIDDEN"
   | "BLOCKED"
   | "UPSTREAM"
-  | "NETWORK";
+  | "NETWORK"
+  | "AI_UNAVAILABLE"
+  | "AI_RATE_LIMITED"
+  | "AI_REFUSED"
+  | "AI_ERROR";
 
 export interface ApiError {
   code: ApiErrorCode;
@@ -172,31 +179,61 @@ export interface EntryPointReport {
 
 // ─── Planned (later milestones) ──────────────────────────────────────────
 
-/** M4 */
-export type SummaryTarget = "file" | "folder" | "overview";
+// ─── AI summaries ────────────────────────────────────────────────────────
 
-export type SummaryStatus =
-  | "ok"
-  | "skipped"
-  | "too-large"
-  | "unclear"
-  | "error";
+/** "on": a real model is configured; "mock": dev-only fake provider; "off": no credentials. */
+export type AiMode = "on" | "mock" | "off";
+
+export type SummaryTarget = "file" | "folder";
+
+/**
+ * ok: written by the model from the file's contents.
+ * unclear: the model couldn't tell what the file is for and says why.
+ * skipped / too-large / empty: no model call; the text says why.
+ */
+export type SummaryStatus = "ok" | "unclear" | "skipped" | "too-large" | "empty";
 
 export interface Summary {
   path: string;
   target: SummaryTarget;
   text: string;
   status: SummaryStatus;
+  /** Only the start of a long file was shown to the model. */
+  truncated?: boolean;
+  /** Model that wrote it; null when no model was involved. */
+  model: string | null;
+  createdAt: string;
+}
+
+export interface ReadingStep {
+  path: string;
+  why: string;
+}
+
+export interface ProjectOverview {
+  /** What the project is, in two or three sentences. */
+  what: string;
+  techStack: string[];
+  whereToStart: string;
+  /** The model's pick of entry points (refines the heuristic "Start here" list). */
+  startHere: ReadingStep[];
+  /** 5–8 files to read, in order. */
+  readingOrder: ReadingStep[];
   model: string;
   createdAt: string;
 }
 
-export interface ProjectOverview {
-  what: string;
-  techStack: string[];
-  whereToStart: string;
-  readingOrder: { path: string; why: string }[];
-}
+/** NDJSON events from POST /api/summaries. `path` is null for errors that stop the whole request. */
+export type SummaryEvent =
+  | { type: "delta"; path: string; text: string }
+  | { type: "summary"; summary: Summary }
+  | { type: "error"; path: string | null; error: ApiError };
+
+/** NDJSON events from POST /api/overview. */
+export type OverviewEvent =
+  | { type: "partial"; what: string }
+  | { type: "overview"; overview: ProjectOverview }
+  | { type: "error"; error: ApiError };
 
 /** M5 */
 export interface CodeSymbol {

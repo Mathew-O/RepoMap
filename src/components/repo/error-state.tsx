@@ -32,6 +32,12 @@ const PRESENTATION: Record<ApiErrorCode, { icon: Icon; title: string; tokenActio
   BLOCKED: { icon: CircleSlashIcon, title: "Repository unavailable" },
   UPSTREAM: { icon: AlertIcon, title: "Something went wrong", retry: true },
   NETWORK: { icon: AlertIcon, title: "Connection problem", retry: true },
+  // The repo page never fails on these (AI errors show inline), but the map must be complete.
+  BAD_REQUEST: { icon: AlertIcon, title: "Something went wrong", retry: true },
+  AI_UNAVAILABLE: { icon: AlertIcon, title: "AI summaries are off", retry: true },
+  AI_RATE_LIMITED: { icon: StopwatchIcon, title: "AI rate limit reached", retry: true },
+  AI_REFUSED: { icon: AlertIcon, title: "The AI declined this request" },
+  AI_ERROR: { icon: AlertIcon, title: "The AI service had a problem", retry: true },
 };
 
 /** Primer "blankslate"-style error panel with a clear next step. */
